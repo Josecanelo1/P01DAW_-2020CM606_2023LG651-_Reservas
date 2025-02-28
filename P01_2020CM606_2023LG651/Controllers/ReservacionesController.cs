@@ -19,7 +19,7 @@ namespace P01_2020CM606_2023LG651.Controllers
             _contexto = contexto;
         }
 
-        /// <summary>
+                /// <summary>
         /// Endpoint para crear una nueva reserva de espacio
         /// </summary>
         [HttpPost]
@@ -34,48 +34,52 @@ namespace P01_2020CM606_2023LG651.Controllers
                 {
                     return NotFound($"No se encontró el usuario con ID {nuevaReserva.UsuarioId}");
                 }
-
+        
                 // Verificar que el espacio existe
                 var espacio = await _contexto.EspaciosParque
                     .Include(e => e.Sucursal)
                     .FirstOrDefaultAsync(e => e.Id == nuevaReserva.EspacioId);
-
+        
                 if (espacio == null)
                 {
                     return NotFound($"No se encontró el espacio con ID {nuevaReserva.EspacioId}");
                 }
-
+        
                 // Verificar que el espacio esté disponible
                 if (espacio.Estado != "Disponible")
                 {
                     return BadRequest($"El espacio {espacio.Numero} en {espacio.Sucursal.Nombre} no está disponible");
                 }
-
-                // Verificar que no haya otra reserva para el mismo espacio en la misma fecha y hora
+        
+                // Calcular hora de finalización para la nueva reserva
                 var horaFin = nuevaReserva.HoraInicio.Add(TimeSpan.FromHours(nuevaReserva.CantidadHoras));
-                
-                var reservaExistente = await _contexto.Reservas
+        
+                // Primero obtenemos todas las reservas para ese espacio y fecha sin filtrar por hora
+                var reservasExistentes = await _contexto.Reservas
                     .Where(r => r.EspacioId == nuevaReserva.EspacioId && 
-                           r.Fecha.Date == nuevaReserva.Fecha.Date &&
-                           ((r.HoraInicio <= nuevaReserva.HoraInicio && 
-                             r.HoraInicio.Add(TimeSpan.FromHours(r.CantidadHoras)) > nuevaReserva.HoraInicio) ||
-                            (r.HoraInicio < horaFin && 
-                             r.HoraInicio >= nuevaReserva.HoraInicio)))
-                    .FirstOrDefaultAsync();
-
-                if (reservaExistente != null)
+                           r.Fecha.Date == nuevaReserva.Fecha.Date)
+                    .ToListAsync();
+        
+                // Ahora verificamos el solapamiento de horas en memoria
+                var reservaConflicto = reservasExistentes.FirstOrDefault(r => 
+                    (r.HoraInicio <= nuevaReserva.HoraInicio && 
+                     r.HoraInicio.Add(TimeSpan.FromHours(r.CantidadHoras)) > nuevaReserva.HoraInicio) ||
+                    (r.HoraInicio < horaFin && 
+                     r.HoraInicio >= nuevaReserva.HoraInicio));
+        
+                if (reservaConflicto != null)
                 {
                     return BadRequest("El espacio ya está reservado en ese horario");
                 }
-
+        
                 // Guardar la reserva
                 await _contexto.Reservas.AddAsync(nuevaReserva);
                 await _contexto.SaveChangesAsync();
-
+        
                 // Actualizar el estado del espacio temporalmente
                 espacio.Estado = "Reservado";
                 await _contexto.SaveChangesAsync();
-
+        
                 return Ok(new { mensaje = "Reserva creada exitosamente", reserva = nuevaReserva });
             }
             catch (Exception ex)
