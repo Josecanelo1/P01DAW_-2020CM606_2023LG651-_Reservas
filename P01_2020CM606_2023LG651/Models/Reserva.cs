@@ -9,6 +9,7 @@ public class Reserva
     public int Id { get; set; }
     public int UsuarioId { get; set; }
     public int EspacioId { get; set; }
+    public EspacioParque Espacio { get; set; }
     public DateTime Fecha { get; set; }
     public TimeSpan HoraInicio { get; set; }
     public int CantidadHoras { get; set; }
