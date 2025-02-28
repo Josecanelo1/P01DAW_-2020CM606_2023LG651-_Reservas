@@ -8,6 +8,7 @@ public class EspacioParque
     [Key]
     public int Id { get; set; }
     public int SucursalId { get; set; }
+    public Sucursal Sucursal { get; set; }
     public int Numero { get; set; }
     public string Ubicacion { get; set; }
     public decimal CostoPorHora { get; set; }
