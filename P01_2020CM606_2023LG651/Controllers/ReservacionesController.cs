@@ -202,7 +202,7 @@ namespace P01_2020CM606_2023LG651.Controllers
             }
         }
 
-        /// <summary>
+                /// <summary>
         /// Endpoint para obtener todos los espacios disponibles por sucursal, fecha y hora
         /// </summary>
         [HttpGet]
@@ -217,42 +217,49 @@ namespace P01_2020CM606_2023LG651.Controllers
                 {
                     return NotFound($"No se encontró la sucursal con ID {sucursalId}");
                 }
-
+        
                 // Calcular hora de fin
                 var horaFin = horaInicio.Add(TimeSpan.FromHours(cantidadHoras));
-
-                // Obtener reservas existentes para la fecha y rango de horas
-                var reservasExistentes = await _contexto.Reservas
-                    .Where(r => r.Fecha.Date == fecha.Date &&
-                                r.Espacio.SucursalId == sucursalId &&
-                                ((r.HoraInicio <= horaInicio && 
-                                  r.HoraInicio.Add(TimeSpan.FromHours(r.CantidadHoras)) > horaInicio) ||
-                                 (r.HoraInicio < horaFin && 
-                                  r.HoraInicio >= horaInicio)))
-                    .Select(r => r.EspacioId)
+        
+                // Primero obtenemos las reservas para la fecha y la sucursal específica
+                var todasReservas = await _contexto.Reservas
+                    .Where(r => r.Fecha.Date == fecha.Date)
+                    .Include(r => r.Espacio)
+                    .Where(r => r.Espacio.SucursalId == sucursalId)
                     .ToListAsync();
-
-                // Obtener espacios disponibles (que no estén en las reservas existentes)
+        
+                // Filtramos en memoria para encontrar los espacios con conflictos horarios
+                var espaciosOcupados = todasReservas
+                    .Where(r => (r.HoraInicio <= horaInicio && 
+                                 r.HoraInicio.Add(TimeSpan.FromHours(r.CantidadHoras)) > horaInicio) ||
+                                (r.HoraInicio < horaFin && r.HoraInicio >= horaInicio))
+                    .Select(r => r.EspacioId)
+                    .Distinct()
+                    .ToList();
+        
+                // Obtenemos todos los espacios de la sucursal que estén disponibles
                 var espaciosDisponibles = await _contexto.EspaciosParque
                     .Where(e => e.SucursalId == sucursalId && 
-                                e.Estado == "Disponible" &&
-                                !reservasExistentes.Contains(e.Id))
-                    .Select(e => new
-                    {
-                        e.Id,
-                        e.Numero,
-                        e.Ubicacion,
-                        e.CostoPorHora,
-                        CostoTotal = e.CostoPorHora * cantidadHoras
-                    })
+                               e.Estado == "Disponible" &&
+                               !espaciosOcupados.Contains(e.Id))
                     .ToListAsync();
-
-                if (!espaciosDisponibles.Any())
+        
+                // Formateamos la respuesta
+                var resultado = espaciosDisponibles.Select(e => new
+                {
+                    e.Id,
+                    e.Numero,
+                    e.Ubicacion,
+                    e.CostoPorHora,
+                    CostoTotal = e.CostoPorHora * cantidadHoras
+                }).ToList();
+        
+                if (!resultado.Any())
                 {
                     return NotFound($"No hay espacios disponibles en la sucursal para la fecha y hora seleccionadas");
                 }
-
-                return Ok(espaciosDisponibles);
+        
+                return Ok(resultado);
             }
             catch (Exception ex)
             {
